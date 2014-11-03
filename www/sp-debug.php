@@ -1,6 +1,6 @@
 <?php
 
-require_once('../lib/_autoload.php');
+require_once('/workspace/simplesaml/lib/_autoload.php');
 
 
 function XMLTextNode2HTML_TS($domnode)
@@ -54,31 +54,37 @@ if (isset($_REQUEST['action']) && $_REQUEST['action'] == 'login' ) {
     $bForceAuthn = false;
     if ( (isset($_REQUEST['forceauthn'])) && ($_REQUEST['forceauthn'] == 'true') )
         $bForceAuthn = true;
+    $bSignAuthnrequest = false;
+    if ( (isset($_REQUEST['signAuthnrequest'])) && ($_REQUEST['signAuthnrequest'] == 'true') )
+        $bSignAuthnrequest = true;
 
     // For use by SAML2Keeper callback function
     $session->setData('string', 'SAML2Keeper_ReturnTo', $returnURL);
 
-    // login
-    if ( !isset($_REQUEST['loa']) || !isset($gLOAmap[$_REQUEST['loa']]) ) {
-        $as->login( array(
-            //'ReturnTo' => $returnURL,
-            'ReturnCallback' => array('sspmod_saml2keeper_SAML2Keeper','loginCallback'),
-            'ForceAuthn' => $bForceAuthn,
-        ) );   // Vanilla login without specifying a LOA
-    }
-    else {
+    $loginParams = array(
+        'ReturnTo' => $returnURL,
+        'ReturnCallback' => array('sspmod_saml2keeper_SAML2Keeper','loginCallback'),
+        'ForceAuthn' => $bForceAuthn,
+        'sign.authnrequest' => $bSignAuthnrequest,
+
+    );
+
+    // LOA
+    if ( isset($_REQUEST['loa']) && isset($gLOAmap[$_REQUEST['loa']]) ) {
         // Store the requested LOA in the session so we can verify it later
         $session->setData('string', 'RequiredAuthnContextClassRef', $gLOAmap[$_REQUEST['loa']]);
-
-        $as->login( array(
-            //'ReturnTo' => $returnURL,
-            'ReturnCallback' => array('sspmod_saml2keeper_SAML2Keeper','loginCallback'),
-            'ForceAuthn' => $bForceAuthn,
-            'saml:AuthnContextClassRef' => $gLOAmap[$_REQUEST['loa']]  // Specify LOA
-        ) );
+        $loginParams['saml:AuthnContextClassRef'] = $gLOAmap[$_REQUEST['loa']];  // Specify LOA
     }
 
-    // $as->requireAuth(array('saml:idp' => 'wayf-test.surfnet.nl') );
+    // RequesterID
+    if ( isset($_REQUEST['requesterid']) && strlen($_REQUEST['requesterid']) > 0 ) {
+        $loginParams['saml:RequesterID'] = array($_REQUEST['requesterid']);
+    }
+
+
+    // login
+    $as->login( $loginParams );
+
     exit;   // Added for clarity
 
 }
@@ -155,16 +161,10 @@ html;
         </table>
         <h3>Logout</h3>
         <p>
-            <form name="logout" action="{$$returnURL}" method="get">
+            <form name="logout" action="sp.php" method="get">
                <input type="hidden" name="action" value="logout"/>
                <input type="submit" value="Logout" />
             </form>
-        </p>
-
-	<h3>Session</h3>
-	<p>
-	    SimpleSAMLphp session start: <b>{$authnInstant}</b></br />
-            SimpleSAMLphp session expire: <b>{$expire}</b>
         </p>
 html;
 } else {
@@ -173,10 +173,14 @@ html;
 html;
 }
 
+echo "<h3>Session</h3>";
+echo "<p>SimpleSAMLphp session start: <b>{$authnInstant}</b></br />";
+echo "SimpleSAMLphp session expire: <b>{$expire}</b></p>";
+
 echo <<<html
         <h3>Login (again)</h3>
         <p>
-            <form name="login" action="{$returnURL}" method="get">
+            <form name="login" action="sp.php" method="get">
                <input type="hidden" name="action" value="login"/>
                <p>Request LOA:<br />
                    <input type="radio" name="loa" value="1" />1<br />
@@ -186,6 +190,13 @@ echo <<<html
                </p>
                <p>
                     <input type="checkbox" name="forceauthn" value="true" />Force authentication<br />
+               </p>
+               <p>
+                   RequesterID: <br />
+                   <input type="text" name="requesterid" /><br />
+               </p>
+               <p>
+                    <input type="checkbox" name="signAuthnrequest" value="true" />Sign authentication request<br />
                </p>
                <p>
                     <input type="submit" value="Login" />
@@ -238,4 +249,3 @@ echo <<<html
     </body>
 </html>
 html;
-
